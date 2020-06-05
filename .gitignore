@@ -1,0 +1,6 @@
+*.pyc
+.idea/*
+TODO
+data
+config
+repositories
