@@ -205,6 +205,83 @@ class Main:
                                 row['lambdas'],
                             ])
 
+    @staticmethod
+    def add_line_counts():
+        for il, language in enumerate(const.LANGUAGES, 1):
+            print(f'language {il}/3')
+            repositories = github_api.get_repositories(language, const.REPOSITORY_COUNT, get_data_file(language))
+            for ir, repository in enumerate(repositories, 1):
+                print(f'repo {ir}/10')
+                owner, name = repository[1:3]
+                local.clone_repository(owner, name)
+                commits = local.get_commits(language, name, get_data_file(language, owner, name))
+                for date, commit_id in commits:
+                    local.checkout_commit(name, commit_id)
+
+                    data_file = get_data_file(language, owner, name, commit_id)
+                    with open(data_file, 'r') as f:
+                        f.readline()
+                        data = list(csv.reader(f))
+
+                    data = [  # with line count
+                        [path, lambda_count,
+                         sum(1 for _ in open(f'{const.REPOSITORIES_DIR}/{name}/{path}', errors='ignore'))]
+                        for path, lambda_count in data
+                    ]
+                    with open(data_file, 'w') as f:
+                        header = 'path,count,line_count\n'
+                        f.write(header)
+                        writer = csv.writer(f)
+                        writer.writerows(data)
+
+                    line_count = sum(d[2] for d in data)
+                    count_file = get_data_file(language, owner, name, commit_id, filename='count.csv')
+                    with open(count_file, 'a') as f:
+                        csv.writer(f).writerow(['line_count', line_count])
+
+                local.delete_repository(name)
+                repo_summary_file = get_data_file(language, owner, name, filename='summary.csv')
+                with open(repo_summary_file, 'r') as sf:
+                    sf.readline()
+                    data = list(csv.reader(sf))
+                with open(repo_summary_file, 'w') as sf:
+                    w = csv.writer(sf)
+                    w.writerow(['date', 'lambdas', 'skipped', 'files', 'line_count'])
+                    for date, commit in commits:
+                        data_file = get_data_file(language, owner, name, commit, filename='count.csv')
+                        with open(data_file, 'r') as f:
+                            f.readline()
+                            rows = list(csv.reader(f))
+                        counts = {r[0]: r[1] for r in rows}
+                        w.writerow([
+                            date, counts['lambdas'], counts['skipped_files'], counts['files'], counts['line_count'],
+                        ])
+
+        summary_file = get_data_file(filename='summary.csv')
+        with open(summary_file, 'w') as sf:
+            w = csv.writer(sf)
+            w.writerow([
+                'language', 'nameWithOwner', 'date', 'file_count', 'skipped_file_count', 'line_count', 'lambda_count',
+            ])
+            for language in const.LANGUAGES:
+                repositories = github_api.get_repositories(language, const.REPOSITORY_COUNT, get_data_file(language))
+                for repository in repositories:
+                    owner = repository[1]
+                    name = repository[2]
+                    repository_summary_file = get_data_file(language, owner, name, filename='summary.csv')
+                    with open(repository_summary_file, 'r') as rsf:
+                        reader = csv.DictReader(rsf)
+                        for row in reader:
+                            w.writerow([
+                                language,
+                                f'{owner}/{name}',
+                                row['date'],
+                                row['files'],
+                                row['skipped'],
+                                row['line_count'],
+                                row['lambdas'],
+                            ])
+
 
 def get_data_file(*args, filename='data.csv'):
     parts = [const.DATA_DIR, *args, '!', f'{filename}']
